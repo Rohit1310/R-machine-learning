@@ -1,0 +1,151 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Rohit Jain"
+date: "11/23/2018"
+output: html_document
+---
+
+## Background:
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+## Objective
+The goal of this project is to predict the class of exercise using different Machine learning Algos.
+
+## Modeling:
+
+#### Setting up the environment:
+```{r, setup, comment= "$",warning=FALSE, message=FALSE}
+library(dplyr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(e1071)
+library(corrplot)
+library(kableExtra)
+```
+
+#### Data Preprocessing(Loading/Partioning/Cleaning):
+
+```{r, dataPreprocessing, cache=TRUE}
+set.seed(34213)
+## Data loading
+trainDt <- read.csv("pml-training.csv")
+testDt <- read.csv("pml-testing.csv")
+dim(trainDt)
+dim(testDt)
+#str(trainDt)
+## removing the first cloumns of the data set as they are not significate for the modeling
+trainDt <- select(trainDt, -c(1:5))
+testDt <- select(testDt, -c(1:5))
+
+## Data Partitioning
+inTrainSub <- createDataPartition(y = trainDt$classe, p = 0.7, list = FALSE)
+subTrain <- trainDt[inTrainSub,]
+subTest <- trainDt[-inTrainSub,]
+
+# Data Cleaning
+NZV <- nearZeroVar(subTrain)
+TrainSet <- subTrain[, -NZV]
+TestSet  <- subTest[, -NZV]
+Test <- testDt[,-NZV]
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet <- TestSet[, AllNA==FALSE]
+Test <- testDt[,AllNA ==FALSE]
+
+# dimension of the data sets:
+dim(TrainSet)
+dim(TestSet)
+dim(Test)
+
+corrplot(cor(TrainSet[,-ncol(TrainSet)]),
+order = "FPC",
+method = "color",
+type = "lower", 
+tl.cex = 0.8, 
+tl.col = rgb(0, 0, 0)
+)
+
+```
+
+
+#### Models:
+
+#### 1. Decision Tree
+
+```{r, DT, cache=TRUE}
+modelFit_dt <- rpart(classe ~ ., data=TrainSet, method="class")
+pred_dt <- predict(modelFit_dt, TestSet, type = "class")
+conMatDt <- confusionMatrix(pred_dt,TestSet$classe)
+conMatDt
+prp(modelFit_dt,varlen = 5, cex = 0.5)
+```
+
+#### 2. Support Vector Machine
+
+```{r, SVM, cache=TRUE}
+modelFit_svm <- svm(classe ~ ., data = TrainSet)
+pred_svm <- predict(modelFit_svm,TestSet)
+confMatSVM <- confusionMatrix(pred_svm, TestSet$classe)
+confMatSVM
+```
+
+#### 3. Random Forest
+
+```{r, rf, cache=TRUE}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modelFit_rf <- train(
+                      classe ~ ., 
+                      data = TrainSet,
+                      method = "rf", 
+                      trControl = controlRF
+                    )
+modelFit_rf$finalModel
+pred_rf <- predict(modelFit_rf, TestSet)
+confMatRandForest <- confusionMatrix(pred_rf, TestSet$classe)
+confMatRandForest
+```
+
+#### Model Comparison
+
+In this section we will be ploting the predicted Vs actual classe for the "TestSet". And Compaire the accuracy of diffrent models we have fitted.
+The plots are given in increasing order of accuracy below: 
+```{r, plots, cache=TRUE}
+tsvm <- table(pred_svm,TestSet$classe)
+trf <- table(pred_rf,TestSet$classe)
+tdt <- table(pred_dt, TestSet$classe)
+plot(tdt, col = "blue", main = "DT - Predicted Vs Actual", xlab = "")
+plot(tsvm, col = "yellow", main = "SVM - Predicted Vs Actual", xlab = "")
+plot(trf, col = "red", main = "RF - Predicted Vs Actual", xlab = "")
+Accuracy <- data.frame( 
+            Accuracy_RandomForest = paste0(round(confMatRandForest$overall["Accuracy"],4)*100 , "%"),
+                  Accuracy_SVM = paste0(round(confMatSVM$overall["Accuracy"],4)*100,"%"),
+                  Accuracy_DT = paste0(round(conMatDt$overall["Accuracy"],4)*100,"%")
+                  )
+kable(Accuracy)
+
+```
+
+## Conclusion:
+
+On the basis of the comparison of models above <B>"Random Forest"</B> is the best suited model for the prediction.
+
+Following is the predicted "classe" for the given test data.
+```{r, predction}
+final_Prediction <- predict(modelFit_rf,testDt)
+final_Prediction
+```
+
+# Thank You
